@@ -15,6 +15,7 @@ package com.bytedesk.core.message;
 
 import java.util.Set;
 
+import com.bytedesk.core.socket.websocket.ExternalWebSocketHandler;
 import org.springframework.lang.NonNull;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Service;
@@ -54,6 +55,18 @@ public class MessageSocketService {
     private final MqttSessionService mqttSessionService;
 
     private final TopicService topicService;
+
+    private final ExternalWebSocketHandler externalWebSocketHandler;
+
+    // 发送消息到websocket客户端
+    public void sendExternalMessage(@NonNull String messageJson) {
+        Assert.notNull(messageJson, "messageJson is null");
+        MessageProtobuf messageObject = JSON.parseObject(messageJson, MessageProtobuf.class);
+        String token = messageObject.getUid();
+        externalWebSocketHandler.sendAgentReply(token, messageObject);
+    }
+
+
 
     // 发送消息给stomp访客端
     public void sendJsonMessage(@NonNull String messageJson) {

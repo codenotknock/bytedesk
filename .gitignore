@@ -82,3 +82,8 @@ message_feedback/
 message_unanswered/
 hanlp/
 visitor_rating/
+
+#taget
+target/
+#idea
+.idea/
