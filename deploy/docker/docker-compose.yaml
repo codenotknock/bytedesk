@@ -131,7 +131,7 @@ services:
       # ai config
       # zhipuai
       # 申请智谱AI API Key：https://www.bigmodel.cn/usercenter/proj-mgmt/apikeys
-      SPRING_AI_ZHIPUAI_API_KEY: 'sk-xxx'
+      SPRING_AI_ZHIPUAI_API_KEY: '17c0295052f34a9ea51676832f8c3140.UUxhNVWl4xE4T9Sk'
       SPRING_AI_ZHIPUAI_CHAT_ENABLED: true
       SPRING_AI_ZHIPUAI_CHAT_OPTIONS_MODEL: glm-4-flash
       SPRING_AI_ZHIPUAI_CHAT_OPTIONS_TEMPERATURE: 0.7
