@@ -46,9 +46,6 @@ public class MessageEventListener {
             if (messageJson == null) {
                 return;
             }
-            // 发送消息给 websocket 客户端
-            messageSocketService.sendExternalMessage(messageJson);
-
             // Send to Stomp clients
             messageSocketService.sendJsonMessage(messageJson);
             

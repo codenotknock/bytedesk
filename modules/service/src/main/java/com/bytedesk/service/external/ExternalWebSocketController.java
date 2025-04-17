@@ -1,18 +1,17 @@
-package com.bytedesk.core.socket.websocket;
+package com.bytedesk.service.external;
 
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-import com.bytedesk.core.utils.JsonResult;
+import lombok.extern.slf4j.Slf4j;
 
 /**
- * @author fuzhouling
- * @date 2025/04/16
- * @program bytedesk
- * @description 外部服务WebSocket控制器，提供WebSocket文档和测试接口
- **/
+ * 外部服务WebSocket控制器
+ * 提供WebSocket文档和测试接口
+ */
+@Slf4j
 @RestController
 @RequestMapping("/api/v1/external")
 public class ExternalWebSocketController {
@@ -23,7 +22,7 @@ public class ExternalWebSocketController {
     @GetMapping("/websocket/docs")
     public ResponseEntity<?> getWebSocketDocs() {
         // 返回WebSocket接口文档
-        return ResponseEntity.ok(JsonResult.success(getWebSocketApiDocs()));
+        return ResponseEntity.ok(getWebSocketApiDocs());
     }
     
     /**
@@ -59,7 +58,7 @@ public class ExternalWebSocketController {
                "        \n" +
                "        <div class=\"form-group\">\n" +
                "            <label for=\"serverUrl\">WebSocket服务器地址:</label>\n" +
-               "            <input type=\"text\" id=\"serverUrl\" value=\"ws://localhost:8080/api/v1/external/websocket?token=test_token\">\n" +
+               "            <input type=\"text\" id=\"serverUrl\" value=\"ws://localhost:8080/external/websocket?token=test_token\">\n" +
                "        </div>\n" +
                "        \n" +
                "        <div class=\"form-group\">\n" +
@@ -108,6 +107,16 @@ public class ExternalWebSocketController {
                "            }\n" +
                "        }\n" +
                "        \n" +
+               "        // 添加消息到容器\n" +
+               "        function addMessage(sender, content, type) {\n" +
+               "            const container = document.getElementById('messageContainer');\n" +
+               "            const messageDiv = document.createElement('div');\n" +
+               "            messageDiv.className = 'message ' + type;\n" +
+               "            messageDiv.innerHTML = '<strong>' + sender + ':</strong> ' + content;\n" +
+               "            container.appendChild(messageDiv);\n" +
+               "            container.scrollTop = container.scrollHeight;\n" +
+               "        }\n" +
+               "        \n" +
                "        // 连接服务器\n" +
                "        function connectToServer(isReconnect = false) {\n" +
                "            const serverUrl = document.getElementById('serverUrl').value;\n" +
@@ -131,7 +140,7 @@ public class ExternalWebSocketController {
                "                    // 如果是重连，发送重连请求\n" +
                "                    if (isReconnect && threadId) {\n" +
                "                        const reconnectMessage = {\n" +
-               "                            event: 'reconnect',\n" +
+               "                            type: 'reconnect',\n" +
                "                            data: {\n" +
                "                                threadId: threadId\n" +
                "                            }\n" +
@@ -199,24 +208,22 @@ public class ExternalWebSocketController {
                "                    if (response.event === 'agent-reply') {\n" +
                "                        // 客服回复\n" +
                "                        const data = response.data;\n" +
-               "                        addMessage(data.user.nickname, data.content, 'received');\n" +
+               "                        if (data.user && data.content) {\n" +
+               "                            addMessage(data.user.nickname, data.content, 'received');\n" +
+               "                        }\n" +
                "                        return;\n" +
                "                    }\n" +
                "                    \n" +
                "                    if (response.event === 'error') {\n" +
                "                        // 错误消息\n" +
-               "                        addMessage('系统错误', response.message, 'received');\n" +
+               "                        addMessage('系统', '错误: ' + response.message, 'received');\n" +
                "                        return;\n" +
                "                    }\n" +
-               "                    \n" +
-               "                    // 其他消息\n" +
-               "                    addMessage('系统', JSON.stringify(response), 'received');\n" +
                "                };\n" +
                "                \n" +
                "                socket.onclose = function(event) {\n" +
                "                    stopHeartbeat();\n" +
                "                    updateStatus('连接已关闭');\n" +
-               "                    addMessage('系统', '连接已关闭: ' + (event.reason || '未知原因'), 'received');\n" +
                "                    document.getElementById('connectBtn').disabled = false;\n" +
                "                    document.getElementById('disconnectBtn').disabled = true;\n" +
                "                    document.getElementById('reconnectBtn').disabled = false;\n" +
@@ -225,35 +232,79 @@ public class ExternalWebSocketController {
                "                    // 尝试自动重连\n" +
                "                    if (reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {\n" +
                "                        reconnectAttempts++;\n" +
-               "                        const delay = Math.min(1000 * Math.pow(2, reconnectAttempts), 30000);\n" +
-               "                        addMessage('系统', `连接断开，${delay/1000}秒后尝试自动重连(${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS})...`, 'received');\n" +
+               "                        const delay = Math.pow(2, reconnectAttempts) * 1000; // 指数退避\n" +
+               "                        addMessage('系统', `连接已断开，${delay/1000}秒后尝试重连 (尝试 ${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS})`, 'received');\n" +
                "                        setTimeout(() => connectToServer(true), delay);\n" +
+               "                    } else {\n" +
+               "                        addMessage('系统', '连接已断开，已达到最大重试次数，请手动重连', 'received');\n" +
                "                    }\n" +
                "                };\n" +
                "                \n" +
                "                socket.onerror = function(error) {\n" +
-               "                    updateStatus('连接错误');\n" +
-               "                    addMessage('系统', '连接错误', 'received');\n" +
+               "                    console.error('WebSocket错误:', error);\n" +
+               "                    addMessage('系统', '连接发生错误', 'received');\n" +
                "                };\n" +
-               "            } catch (error) {\n" +
+               "            } catch (e) {\n" +
+               "                console.error('连接错误:', e);\n" +
                "                updateStatus('连接失败');\n" +
-               "                addMessage('系统', '创建WebSocket连接失败: ' + error.message, 'received');\n" +
+               "                addMessage('系统', '连接失败: ' + e.message, 'received');\n" +
                "            }\n" +
                "        }\n" +
                "        \n" +
-               "        // 开始心跳\n" +
-               "        function startHeartbeat() {\n" +
-               "            stopHeartbeat(); // 先停止可能存在的心跳\n" +
+               "        // 发送消息\n" +
+               "        function sendMessage() {\n" +
+               "            if (!socket || socket.readyState !== WebSocket.OPEN) {\n" +
+               "                addMessage('系统', '未连接，无法发送消息', 'received');\n" +
+               "                return;\n" +
+               "            }\n" +
                "            \n" +
-               "            heartbeatInterval = setInterval(function() {\n" +
+               "            const userNick = document.getElementById('userNick').value;\n" +
+               "            const messageContent = document.getElementById('message').value;\n" +
+               "            \n" +
+               "            if (!messageContent.trim()) {\n" +
+               "                addMessage('系统', '消息内容不能为空', 'received');\n" +
+               "                return;\n" +
+               "            }\n" +
+               "            \n" +
+               "            // 构建消息\n" +
+               "            const message = {\n" +
+               "                type: 'user-question',\n" +
+               "                data: {\n" +
+               "                    userNick: userNick,\n" +
+               "                    question: messageContent,\n" +
+               "                    threadId: threadId // 如果存在会话ID则使用，否则创建新会话\n" +
+               "                }\n" +
+               "            };\n" +
+               "            \n" +
+               "            socket.send(JSON.stringify(message));\n" +
+               "            addMessage(userNick, messageContent, 'sent');\n" +
+               "            document.getElementById('message').value = ''; // 清空输入框\n" +
+               "        }\n" +
+               "        \n" +
+               "        // 断开连接\n" +
+               "        function disconnectFromServer() {\n" +
+               "            if (socket) {\n" +
+               "                socket.close();\n" +
+               "                stopHeartbeat();\n" +
+               "                updateStatus('已手动断开连接');\n" +
+               "                document.getElementById('connectBtn').disabled = false;\n" +
+               "                document.getElementById('disconnectBtn').disabled = true;\n" +
+               "                document.getElementById('reconnectBtn').disabled = false;\n" +
+               "                document.getElementById('sendBtn').disabled = true;\n" +
+               "            }\n" +
+               "        }\n" +
+               "        \n" +
+               "        // 发送心跳\n" +
+               "        function startHeartbeat() {\n" +
+               "            stopHeartbeat(); // 先停止现有心跳\n" +
+               "            \n" +
+               "            heartbeatInterval = setInterval(() => {\n" +
                "                if (socket && socket.readyState === WebSocket.OPEN) {\n" +
-               "                    const heartbeat = {\n" +
-               "                        event: 'heartbeat',\n" +
+               "                    const heartbeatMessage = {\n" +
+               "                        type: 'heartbeat',\n" +
                "                        timestamp: Date.now()\n" +
                "                    };\n" +
-               "                    socket.send(JSON.stringify(heartbeat));\n" +
-               "                } else {\n" +
-               "                    stopHeartbeat();\n" +
+               "                    socket.send(JSON.stringify(heartbeatMessage));\n" +
                "                }\n" +
                "            }, 30000); // 30秒发送一次心跳\n" +
                "        }\n" +
@@ -266,98 +317,41 @@ public class ExternalWebSocketController {
                "            }\n" +
                "        }\n" +
                "        \n" +
-               "        // 添加消息到界面\n" +
-               "        function addMessage(sender, content, type) {\n" +
-               "            const container = document.getElementById('messageContainer');\n" +
-               "            const messageDiv = document.createElement('div');\n" +
-               "            messageDiv.className = 'message ' + type;\n" +
+               "        // 事件监听\n" +
+               "        document.addEventListener('DOMContentLoaded', function() {\n" +
+               "            document.getElementById('connectBtn').addEventListener('click', () => connectToServer(false));\n" +
+               "            document.getElementById('disconnectBtn').addEventListener('click', disconnectFromServer);\n" +
+               "            document.getElementById('reconnectBtn').addEventListener('click', () => connectToServer(true));\n" +
+               "            document.getElementById('sendBtn').addEventListener('click', sendMessage);\n" +
                "            \n" +
-               "            const senderSpan = document.createElement('strong');\n" +
-               "            senderSpan.textContent = sender + ': ';\n" +
-               "            \n" +
-               "            const contentSpan = document.createElement('span');\n" +
-               "            contentSpan.textContent = content;\n" +
-               "            \n" +
-               "            messageDiv.appendChild(senderSpan);\n" +
-               "            messageDiv.appendChild(contentSpan);\n" +
-               "            container.appendChild(messageDiv);\n" +
-               "            \n" +
-               "            // 滚动到底部\n" +
-               "            container.scrollTop = container.scrollHeight;\n" +
-               "        }\n" +
-               "        \n" +
-               "        // 连接按钮事件\n" +
-               "        document.getElementById('connectBtn').addEventListener('click', function() {\n" +
-               "            connectToServer();\n" +
-               "        });\n" +
-               "        \n" +
-               "        // 断开按钮事件\n" +
-               "        document.getElementById('disconnectBtn').addEventListener('click', function() {\n" +
-               "            if (socket) {\n" +
-               "                socket.close();\n" +
-               "            }\n" +
-               "        });\n" +
-               "        \n" +
-               "        // 重连按钮事件\n" +
-               "        document.getElementById('reconnectBtn').addEventListener('click', function() {\n" +
-               "            if (socket) {\n" +
-               "                socket.close();\n" +
-               "            }\n" +
-               "            setTimeout(() => connectToServer(true), 500);\n" +
-               "        });\n" +
-               "        \n" +
-               "        // 发送按钮事件\n" +
-               "        document.getElementById('sendBtn').addEventListener('click', function() {\n" +
-               "            const userNick = document.getElementById('userNick').value;\n" +
-               "            const message = document.getElementById('message').value;\n" +
-               "            \n" +
-               "            if (!socket || socket.readyState !== WebSocket.OPEN) {\n" +
-               "                addMessage('系统', '连接未建立，无法发送消息', 'received');\n" +
-               "                return;\n" +
-               "            }\n" +
-               "            \n" +
-               "            if (!userNick || !message) {\n" +
-               "                addMessage('系统', '用户昵称和消息内容不能为空', 'received');\n" +
-               "                return;\n" +
-               "            }\n" +
-               "            \n" +
-               "            const messageId = 'msg_' + Date.now();\n" +
-               "            const payload = {\n" +
-               "                event: 'user-question',\n" +
-               "                data: {\n" +
-               "                    userNick: userNick,\n" +
-               "                    question: message,\n" +
-               "                    format: 'text',\n" +
-               "                    messageId: messageId\n" +
+               "            // 回车发送消息\n" +
+               "            document.getElementById('message').addEventListener('keypress', function(e) {\n" +
+               "                if (e.key === 'Enter' && !e.shiftKey) {\n" +
+               "                    e.preventDefault();\n" +
+               "                    if (!document.getElementById('sendBtn').disabled) {\n" +
+               "                        sendMessage();\n" +
+               "                    }\n" +
                "                }\n" +
-               "            };\n" +
-               "            \n" +
-               "            // 如果已有会话ID，则添加到请求中\n" +
-               "            if (threadId) {\n" +
-               "                payload.data.threadId = threadId;\n" +
-               "            }\n" +
-               "            \n" +
-               "            socket.send(JSON.stringify(payload));\n" +
-               "            addMessage(userNick, message, 'sent');\n" +
-               "            \n" +
-               "            // 清空消息输入框\n" +
-               "            document.getElementById('message').value = '';\n" +
+               "            });\n" +
                "        });\n" +
                "    </script>\n" +
                "</body>\n" +
                "</html>";
     }
     
+    /**
+     * 获取WebSocket API文档
+     */
     private Object getWebSocketApiDocs() {
         return new Object() {
-            public final String websocketEndpoint = "/api/v1/external/websocket?token=YOUR_TOKEN";
+            public final String websocketEndpoint = "/external/websocket?token=YOUR_TOKEN";
             
             public final Object[] eventTypes = new Object[] {
                 new Object() {
                     public final String event = "user-question";
                     public final String description = "发送用户问题";
                     public final Object requestFormat = new Object() {
-                        public final String event = "user-question";
+                        public final String type = "user-question";
                         public final Object data = new Object() {
                             public final String userNick = "用户昵称";
                             public final String question = "用户问题内容";
@@ -378,7 +372,7 @@ public class ExternalWebSocketController {
                     public final String event = "heartbeat";
                     public final String description = "心跳保持连接";
                     public final Object requestFormat = new Object() {
-                        public final String event = "heartbeat";
+                        public final String type = "heartbeat";
                         public final long timestamp = 1657123456789L;
                     };
                     public final Object responseFormat = new Object() {
@@ -390,7 +384,7 @@ public class ExternalWebSocketController {
                     public final String event = "reconnect";
                     public final String description = "重新连接会话";
                     public final Object requestFormat = new Object() {
-                        public final String event = "reconnect";
+                        public final String type = "reconnect";
                         public final Object data = new Object() {
                             public final String threadId = "会话ID（可选）";
                         };
