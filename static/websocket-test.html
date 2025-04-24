@@ -1,0 +1,1099 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ByteDesk WebSocket 测试</title>
+    <style>
+        body {
+            font-family: 'Microsoft YaHei', 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f5f7fa;
+            color: #333;
+        }
+        .container {
+            max-width: 1000px;
+            margin: 0 auto;
+            background-color: #fff;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+            padding: 20px;
+        }
+        h1 {
+            color: #2c3e50;
+            margin-top: 0;
+            padding-bottom: 10px;
+            border-bottom: 1px solid #eee;
+        }
+        .section {
+            margin-bottom: 20px;
+            padding: 15px;
+            background-color: #f8f9fa;
+            border-radius: 5px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        input[type="text"], select {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            margin-bottom: 10px;
+            box-sizing: border-box;
+        }
+        button {
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            padding: 10px 15px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin-right: 5px;
+            transition: background-color 0.3s;
+        }
+        button:hover {
+            background-color: #45a049;
+        }
+        button.disconnect {
+            background-color: #f44336;
+        }
+        button.disconnect:hover {
+            background-color: #d32f2f;
+        }
+        button.send {
+            background-color: #2196F3;
+        }
+        button.send:hover {
+            background-color: #0b7dda;
+        }
+        .status {
+            margin-top: 10px;
+            padding: 10px;
+            border-radius: 4px;
+        }
+        .connected {
+            background-color: #dff0d8;
+            color: #3c763d;
+        }
+        .disconnected {
+            background-color: #f2dede;
+            color: #a94442;
+        }
+        .connecting {
+            background-color: #fcf8e3;
+            color: #8a6d3b;
+        }
+        pre {
+            background-color: #f5f5f5;
+            padding: 10px;
+            border-radius: 4px;
+            overflow-x: auto;
+            max-height: 300px;
+            margin-top: 10px;
+        }
+        .message-container {
+            display: flex;
+            margin-bottom: 10px;
+        }
+        .message-input {
+            flex-grow: 1;
+            margin-right: 10px;
+        }
+        .chat-container {
+            display: flex;
+            height: 400px;
+        }
+        .chat-box {
+            flex: 1;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            padding: 10px;
+            overflow-y: auto;
+            margin-right: 10px;
+            background-color: #fff;
+        }
+        .log-box {
+            flex: 1;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            padding: 10px;
+            overflow-y: auto;
+            background-color: #fff;
+        }
+        .message {
+            margin-bottom: 10px;
+            padding: 8px 12px;
+            border-radius: 18px;
+            max-width: 80%;
+            word-wrap: break-word;
+        }
+        .received {
+            background-color: #e9e9eb;
+            align-self: flex-start;
+            margin-right: auto;
+        }
+        .sent {
+            background-color: #dcf8c6;
+            align-self: flex-end;
+            margin-left: auto;
+            text-align: right;
+        }
+        .system {
+            background-color: #f8f9fa;
+            color: #6c757d;
+            font-style: italic;
+            width: 100%;
+            text-align: center;
+        }
+        .flex-row {
+            display: flex;
+            flex-direction: row;
+        }
+        .flex-column {
+            display: flex;
+            flex-direction: column;
+        }
+        .message-bubble {
+            padding: 10px;
+            border-radius: 10px;
+            margin-bottom: 10px;
+            max-width: 80%;
+        }
+        .user-message {
+            background-color: #dcf8c6;
+            margin-left: auto;
+        }
+        .agent-message {
+            background-color: #e5e5ea;
+            margin-right: auto;
+        }
+        .timestamp {
+            font-size: 0.7em;
+            color: #999;
+            margin-top: 2px;
+        }
+        .nickname {
+            font-weight: bold;
+            margin-bottom: 3px;
+        }
+        .grid-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            grid-gap: 10px;
+        }
+        .customer-field {
+            margin-top: 10px;
+            padding: 10px;
+            background-color: #e8f4fc;
+            border-radius: 4px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>ByteDesk WebSocket 测试工具</h1>
+
+        <!-- 连接设置部分 -->
+        <div class="section">
+            <h2>连接设置</h2>
+            <div class="grid-row">
+                <div>
+                    <label for="wsUrl">WebSocket URL:</label>
+                    <input type="text" id="wsUrl" value="ws://localhost:8080/ws/external" />
+                </div>
+                <div>
+                    <label for="token">Token:</label>
+                    <input type="text" id="token" value="test-token" />
+                </div>
+            </div>
+            <div style="margin-top: 10px;">
+                <button id="connectBtn">连接</button>
+                <button id="disconnectBtn" class="disconnect" disabled>断开连接</button>
+            </div>
+            <div id="connectionStatus" class="status disconnected">
+                状态: 未连接
+            </div>
+        </div>
+
+        <!-- 访客信息 -->
+        <div class="section">
+            <h2>访客信息</h2>
+            <div class="grid-row">
+                <div>
+                    <label for="username">访客用户名:</label>
+                    <input type="text" id="username" value="测试用户" />
+                </div>
+                <div>
+                    <label for="userNick">访客昵称:</label>
+                    <input type="text" id="userNick" value="测试昵称" />
+                </div>
+            </div>
+            <div class="grid-row">
+                <div>
+                    <label for="userAvatar">访客头像URL:</label>
+                    <input type="text" id="userAvatar" value="https://cdn.weiyuai.cn/avatars/visitor_default_avatar.png" />
+                </div>
+                <div>
+                    <label for="orgUid">组织UID:</label>
+                    <input type="text" id="orgUid" value="df_org_uid" />
+                </div>
+            </div>
+            <div class="grid-row">
+                <div>
+                    <label for="workgroupSelect">选择技能组:</label>
+                    <select id="workgroupSelect">
+                        <option value="df_wg_presales">售前技能组</option>
+                        <option value="df_wg_sales">销售技能组</option>
+                        <option value="df_wg_service">客服技能组</option>
+                        <option value="df_wg_tech">技术支持</option>
+                    </select>
+                </div>
+                <div>
+                    <label for="customWorkgroupId">自定义技能组ID:</label>
+                    <input type="text" id="customWorkgroupId" placeholder="输入自定义技能组ID" />
+                </div>
+            </div>
+            <div class="customer-field">
+                <label for="customerId">关联客户ID (可选):</label>
+                <input type="text" id="customerId" placeholder="输入客户ID进行关联" />
+            </div>
+        </div>
+
+        <!-- 聊天界面 -->
+        <div class="section">
+            <h2>聊天测试</h2>
+            <div class="chat-container">
+                <div class="chat-box flex-column" id="chatBox"></div>
+                <div class="log-box" id="logBox">
+                    <h3>WebSocket 日志</h3>
+                    <pre id="logContent"></pre>
+                </div>
+            </div>
+
+            <div class="message-container" style="margin-top: 10px;">
+                <input type="text" id="messageInput" class="message-input" placeholder="输入消息..." disabled />
+                <button id="sendBtn" class="send" disabled>发送</button>
+                <button id="sendHeartbeatBtn" disabled>发送心跳</button>
+            </div>
+        </div>
+
+        <!-- 会话信息 -->
+        <div class="section">
+            <h2>会话信息</h2>
+            <div class="grid-row">
+                <div>
+                    <label for="sessionId">会话 ID:</label>
+                    <input type="text" id="sessionId" readonly />
+                </div>
+                <div>
+                    <label for="threadId">线程 ID:</label>
+                    <input type="text" id="threadId" readonly />
+                </div>
+            </div>
+            <div style="margin-top: 10px;">
+                <button id="clearChatBtn">清空聊天记录</button>
+                <button id="reconnectBtn" disabled>重新连接</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // 全局变量
+        let socket = null;
+        let sessionId = null;
+        let threadId = null;
+        let messageCounter = 0;
+        let heartbeatInterval = null; // 心跳定时器
+        let reconnectTimeout = null;  // 重连定时器
+        let isManualDisconnect = false; // 是否是手动断开的连接
+        const HEARTBEAT_INTERVAL = 30000; // 30秒发送一次心跳
+        const RECONNECT_DELAY = 5000;    // 断开后5秒尝试重连
+
+        // DOM 元素
+        const connectBtn = document.getElementById('connectBtn');
+        const disconnectBtn = document.getElementById('disconnectBtn');
+        const reconnectBtn = document.getElementById('reconnectBtn');
+        const sendBtn = document.getElementById('sendBtn');
+        const sendHeartbeatBtn = document.getElementById('sendHeartbeatBtn');
+        const clearChatBtn = document.getElementById('clearChatBtn');
+        const connectionStatus = document.getElementById('connectionStatus');
+        const wsUrlInput = document.getElementById('wsUrl');
+        const usernameInput = document.getElementById('username');
+        const userNickInput = document.getElementById('userNick');
+        const userAvatarInput = document.getElementById('userAvatar');
+        const orgUidInput = document.getElementById('orgUid');
+        const tokenInput = document.getElementById('token');
+        const sessionIdInput = document.getElementById('sessionId');
+        const threadIdInput = document.getElementById('threadId');
+        const messageInput = document.getElementById('messageInput');
+        const chatBox = document.getElementById('chatBox');
+        const logContent = document.getElementById('logContent');
+        const workgroupSelect = document.getElementById('workgroupSelect');
+        const customWorkgroupId = document.getElementById('customWorkgroupId');
+        const customerIdInput = document.getElementById('customerId');
+
+        // 连接 WebSocket
+        connectBtn.addEventListener('click', connectWebSocket);
+        disconnectBtn.addEventListener('click', disconnectWebSocket);
+        reconnectBtn.addEventListener('click', reconnectWebSocket);
+        sendBtn.addEventListener('click', sendMessage);
+        sendHeartbeatBtn.addEventListener('click', sendHeartbeat);
+        clearChatBtn.addEventListener('click', clearChat);
+        
+        // 清空聊天记录
+        function clearChat() {
+            chatBox.innerHTML = '';
+            addSystemMessage('聊天记录已清空');
+        }
+
+        // 连接 WebSocket
+        function connectWebSocket() {
+            // 清除之前的计时器
+            clearHeartbeatAndReconnect();
+            
+            isManualDisconnect = false;
+            let url = wsUrlInput.value;
+            let token = tokenInput.value;
+            
+            // 检查用户名是否有效
+            const username = usernameInput.value.trim();
+            if (!username) {
+                alert('请输入有效的访客用户名');
+                usernameInput.focus();
+                return;
+            }
+            
+            // 添加token作为URL参数
+            if (token) {
+                url += (url.includes('?') ? '&' : '?') + 'token=' + encodeURIComponent(token);
+            }
+            
+            try {
+                socket = new WebSocket(url);
+                updateConnectionStatus('connecting', '正在连接...');
+                
+                socket.onopen = function(event) {
+                    updateConnectionStatus('connected', '已连接');
+                    enableChatControls(true);
+                    log('WebSocket连接已建立');
+                    
+                    // 设置定时发送心跳
+                    startHeartbeat();
+                };
+                
+                socket.onmessage = function(event) {
+                    handleWebSocketMessage(event.data);
+                };
+                
+                socket.onclose = function(event) {
+                    updateConnectionStatus('disconnected', '连接已关闭');
+                    enableChatControls(false);
+                    log('WebSocket连接已关闭: ' + (event.reason || '未知原因'));
+                    
+                    // 清除心跳
+                    clearInterval(heartbeatInterval);
+                    heartbeatInterval = null;
+                    
+                    // 如果不是手动断开，则尝试自动重连
+                    if (!isManualDisconnect) {
+                        log(`将在 ${RECONNECT_DELAY/1000} 秒后尝试自动重连...`);
+                        reconnectTimeout = setTimeout(reconnectWebSocket, RECONNECT_DELAY);
+                    }
+                };
+                
+                socket.onerror = function(error) {
+                    updateConnectionStatus('disconnected', '连接错误');
+                    enableChatControls(false);
+                    log('WebSocket错误: ' + JSON.stringify(error));
+                };
+            } catch (error) {
+                updateConnectionStatus('disconnected', '连接失败');
+                alert('WebSocket连接失败: ' + error.message);
+                log('WebSocket连接失败: ' + error.message);
+            }
+        }
+
+        // 断开 WebSocket 连接
+        function disconnectWebSocket() {
+            // 标记为手动断开
+            isManualDisconnect = true;
+            
+            // 清除所有定时器
+            clearHeartbeatAndReconnect();
+            
+            if (socket && socket.readyState === WebSocket.OPEN) {
+                socket.close();
+                log('手动断开WebSocket连接');
+            }
+        }
+
+        // 处理重连事件
+        function handleReconnectEvent(message) {
+            sessionId = message.sessionId;
+            sessionIdInput.value = sessionId;
+            
+            if (message.threadId) {
+                threadId = message.threadId;
+                threadIdInput.value = threadId;
+                log('重连成功，线程ID: ' + threadId);
+                // 启用重连按钮
+                reconnectBtn.disabled = false;
+            } else {
+                log('重连成功，但没有可恢复的线程');
+                // 禁用重连按钮直到有会话创建
+                reconnectBtn.disabled = true;
+            }
+            
+            if (message.username) {
+                log('服务器确认的用户名: ' + message.username);
+            }
+            
+            addSystemMessage('重新连接已建立');
+        }
+        
+        // 处理重连
+        function reconnectWebSocket() {
+            // 清除可能存在的重连计时器
+            if (reconnectTimeout) {
+                clearTimeout(reconnectTimeout);
+                reconnectTimeout = null;
+            }
+            
+            // 重置手动断开标志
+            isManualDisconnect = false;
+            
+            // 检查用户名是否有效
+            const username = usernameInput.value.trim();
+            if (!username) {
+                alert('请输入有效的访客用户名');
+                usernameInput.focus();
+                return;
+            }
+            
+            if (socket) {
+                // 确保旧连接已关闭
+                if (socket.readyState !== WebSocket.CLOSED) {
+                    socket.close();
+                }
+            }
+            
+            let url = wsUrlInput.value;
+            let token = tokenInput.value;
+            
+            // 添加token作为URL参数
+            if (token) {
+                url += (url.includes('?') ? '&' : '?') + 'token=' + encodeURIComponent(token);
+            }
+            
+            try {
+                socket = new WebSocket(url);
+                updateConnectionStatus('connecting', '正在重新连接...');
+                
+                socket.onopen = function(event) {
+                    updateConnectionStatus('connected', '已重新连接');
+                    enableChatControls(true);
+                    log('WebSocket重新连接已建立');
+                    
+                    // 启动心跳
+                    startHeartbeat();
+                    
+                    // 发送重连消息
+                    const userNick = userNickInput.value || username;
+                    
+                    // 构建重连数据，包含必要的用户信息
+                    const reconnectData = {
+                        event: 'reconnect',
+                        username: username, // 添加到顶层，方便服务器识别
+                        data: {
+                            username: username,
+                            userNick: userNick, // 添加昵称
+                            threadId: threadId
+                        }
+                    };
+                    
+                    socket.send(JSON.stringify(reconnectData));
+                    log('发送重连请求: ' + JSON.stringify(reconnectData, null, 2));
+                };
+                
+                // 重新绑定其他事件处理函数
+                socket.onmessage = function(event) {
+                    handleWebSocketMessage(event.data);
+                };
+                
+                socket.onclose = function(event) {
+                    updateConnectionStatus('disconnected', '重连已关闭');
+                    enableChatControls(false);
+                    log('WebSocket重连已关闭: ' + (event.reason || '未知原因'));
+                    
+                    // 清除心跳
+                    clearInterval(heartbeatInterval);
+                    heartbeatInterval = null;
+                    
+                    // 如果不是手动断开，则尝试再次自动重连
+                    if (!isManualDisconnect) {
+                        log(`将在 ${RECONNECT_DELAY/1000} 秒后再次尝试重连...`);
+                        reconnectTimeout = setTimeout(reconnectWebSocket, RECONNECT_DELAY);
+                    }
+                };
+                
+                socket.onerror = function(error) {
+                    updateConnectionStatus('disconnected', '重连错误');
+                    enableChatControls(false);
+                    log('WebSocket重连错误: ' + JSON.stringify(error));
+                };
+            } catch (error) {
+                updateConnectionStatus('disconnected', '重连失败');
+                log('WebSocket重连失败: ' + error.message);
+                
+                // 如果重连失败，并且不是手动断开，则继续尝试
+                if (!isManualDisconnect) {
+                    log(`重连失败，将在 ${RECONNECT_DELAY/1000} 秒后再次尝试...`);
+                    reconnectTimeout = setTimeout(reconnectWebSocket, RECONNECT_DELAY);
+                }
+            }
+        }
+
+        // 获取当前选择的技能组ID
+        function getWorkgroupId() {
+            // 优先使用自定义技能组ID
+            const custom = customWorkgroupId.value.trim();
+            if (custom) {
+                return custom;
+            }
+            return workgroupSelect.value;
+        }
+
+        // 发送消息
+        function sendMessage() {
+            if (socket && socket.readyState === WebSocket.OPEN) {
+                const message = messageInput.value.trim();
+                if (message) {
+                    const username = usernameInput.value;
+                    const userNick = userNickInput.value || username;
+                    const customerId = customerIdInput.value.trim();
+                    const userAvatar = userAvatarInput.value.trim();
+                    const orgUid = orgUidInput.value.trim() || 'df_org_uid';
+                    const workgroupId = getWorkgroupId();
+                    
+                    // 生成唯一的消息ID
+                    messageCounter++;
+                    const messageId = 'msg_' + new Date().getTime() + '_' + messageCounter;
+                    
+                    const messageData = {
+                        event: 'user-question',
+                        data: {
+                            userNick: userNick,
+                            question: message,
+                            messageId: messageId,
+                            workgroupId: workgroupId,
+                            userAvatar: userAvatar,
+                            orgUid: orgUid
+                        }
+                    };
+                    
+                    // 如果已有线程ID，添加到消息中
+                    if (threadId) {
+                        messageData.data.threadId = threadId;
+                    }
+                    
+                    // 添加客户ID（如果有）
+                    if (customerId) {
+                        messageData.data.customer = customerId;
+                    }
+                    
+                    log(`准备发送消息到技能组 [${workgroupId}]...`);
+                    socket.send(JSON.stringify(messageData));
+                    log('发送消息: ' + JSON.stringify(messageData, null, 2));
+                    
+                    // 显示发送的消息
+                    addUserMessage(userNick, message);
+                    
+                    // 清空输入框
+                    messageInput.value = '';
+                } else {
+                    log('消息内容为空，未发送');
+                }
+            } else {
+                const state = socket ? ['CONNECTING', 'OPEN', 'CLOSING', 'CLOSED'][socket.readyState] : 'NONE';
+                log(`WebSocket未处于可发送状态 (当前状态: ${state})`);
+                alert('WebSocket未连接或不处于可发送状态');
+            }
+        }
+
+        // 发送心跳
+        function sendHeartbeat() {
+            if (socket && socket.readyState === WebSocket.OPEN) {
+                const heartbeatData = {
+                    event: 'heartbeat',
+                    timestamp: new Date().getTime()
+                };
+                
+                socket.send(JSON.stringify(heartbeatData));
+                log('手动发送心跳: ' + JSON.stringify(heartbeatData));
+                
+                // 重置自动心跳计时器
+                if (heartbeatInterval) {
+                    clearInterval(heartbeatInterval);
+                }
+                startHeartbeat();
+            } else {
+                const state = socket ? ['CONNECTING', 'OPEN', 'CLOSING', 'CLOSED'][socket.readyState] : 'NONE';
+                log(`无法发送心跳: WebSocket未连接 (状态: ${state})`);
+                alert('WebSocket未连接，无法发送心跳');
+            }
+        }
+
+        // 开始发送心跳
+        function startHeartbeat() {
+            // 清除之前的心跳定时器
+            if (heartbeatInterval) {
+                clearInterval(heartbeatInterval);
+            }
+            
+            // 设置新的心跳定时器
+            heartbeatInterval = setInterval(function() {
+                if (socket && socket.readyState === WebSocket.OPEN) {
+                    const heartbeatData = {
+                        event: 'heartbeat',
+                        timestamp: new Date().getTime()
+                    };
+                    
+                    socket.send(JSON.stringify(heartbeatData));
+                    log('自动发送心跳...');
+                } else {
+                    log('心跳失败: WebSocket未连接');
+                    clearInterval(heartbeatInterval);
+                }
+            }, HEARTBEAT_INTERVAL);
+            
+            log(`已设置心跳，每 ${HEARTBEAT_INTERVAL/1000} 秒发送一次`);
+        }
+        
+        // 清除心跳和重连计时器
+        function clearHeartbeatAndReconnect() {
+            if (heartbeatInterval) {
+                clearInterval(heartbeatInterval);
+                heartbeatInterval = null;
+            }
+            
+            if (reconnectTimeout) {
+                clearTimeout(reconnectTimeout);
+                reconnectTimeout = null;
+            }
+        }
+
+        // 处理接收到的WebSocket消息
+        function handleWebSocketMessage(data) {
+            log('收到原始消息: ' + data);
+            
+            try {
+                const message = JSON.parse(data);
+                const event = message.event;
+                
+                // 显示接收到的详细数据结构
+                log('消息事件类型: ' + event);
+                log('消息完整结构: ' + JSON.stringify(message, null, 2));
+                
+                // 检查特定字段
+                if (message.username) {
+                    log('消息中包含username字段: ' + message.username);
+                }
+                
+                if (message.data !== undefined) {
+                    const dataType = typeof message.data;
+                    log('data字段类型: ' + dataType);
+                    
+                    if (dataType === 'object') {
+                        log('data字段内容(对象): ' + JSON.stringify(message.data, null, 2).substring(0, 200) + 
+                            (JSON.stringify(message.data).length > 200 ? '...' : ''));
+                    } else if (dataType === 'string') {
+                        log('data字段内容(字符串): ' + message.data);
+                    } else {
+                        log('data字段内容: ' + message.data);
+                    }
+                }
+                
+                switch (event) {
+                    case 'connect':
+                        handleConnectEvent(message);
+                        break;
+                    case 'reconnect':
+                        handleReconnectEvent(message);
+                        break;
+                    case 'heartbeat':
+                        // 简单记录心跳响应
+                        log('收到心跳响应');
+                        break;
+                    case 'message-sent':
+                        // 消息发送确认
+                        log('消息发送确认');
+                        break;
+                    case 'thread-created':
+                        handleThreadCreatedEvent(message);
+                        break;
+                    case 'agent-reply':
+                        handleAgentReplyEvent(message);
+                        break;
+                    case 'error':
+                        // 错误处理
+                        log('收到错误: ' + message.message);
+                        alert('服务器错误: ' + message.message);
+                        break;
+                    default:
+                        log('未知事件类型: ' + event);
+                }
+            } catch (error) {
+                log('解析消息错误: ' + error.message);
+                log('无法解析的原始消息: ' + data);
+            }
+        }
+
+        // 处理连接事件
+        function handleConnectEvent(message) {
+            sessionId = message.sessionId;
+            sessionIdInput.value = sessionId;
+            
+            if (message.threadId) {
+                threadId = message.threadId;
+                threadIdInput.value = threadId;
+            }
+            
+            log('连接成功，会话ID: ' + sessionId);
+            addSystemMessage('连接已建立');
+        }
+
+        // 处理线程创建事件
+        function handleThreadCreatedEvent(message) {
+            const data = message.data;
+            
+            if (!data) {
+                log('收到的线程创建事件没有数据');
+                return;
+            }
+            
+            try {
+                log('线程创建事件数据类型: ' + typeof data);
+                
+                // 处理不同的数据结构格式
+                if (typeof data === 'string') {
+                    // 如果是字符串，可能是欢迎消息或JSON字符串
+                    try {
+                        // 尝试解析，如果是有效的JSON字符串
+                        log('尝试解析线程创建事件的字符串数据');
+                        const parsedData = JSON.parse(data);
+                        log('成功解析为JSON对象');
+                        processThreadData(parsedData);
+                        
+                        // 如果有欢迎消息，显示它
+                        if (parsedData.content) {
+                            addAgentMessage('系统', parsedData.content);
+                        } else if (parsedData.message && parsedData.message.content) {
+                            addAgentMessage('系统', parsedData.message.content);
+                        }
+                    } catch (e) {
+                        // 解析失败，直接作为文本消息处理
+                        log('JSON解析失败: ' + e.message);
+                        log('将作为纯文本欢迎消息处理: ' + data);
+                        // 直接显示为欢迎消息
+                        addAgentMessage('系统', data);
+                    }
+                } else {
+                    // 直接处理对象格式
+                    log('处理对象格式的线程数据');
+                    processThreadData(data);
+                    
+                    // 提取欢迎消息
+                    if (data.content) {
+                        addAgentMessage('系统', data.content);
+                    } else if (data.message && data.message.content) {
+                        addAgentMessage('系统', data.message.content);
+                    }
+                }
+                
+                // 更新UI状态
+                reconnectBtn.disabled = false;
+            } catch (e) {
+                log('处理线程创建事件出错: ' + e.message);
+                console.error(e);
+            }
+        }
+        
+        // 处理线程数据的辅助函数
+        function processThreadData(data) {
+            // 从不同可能的位置获取线程ID
+            if (data.thread && data.thread.uid) {
+                threadId = data.thread.uid;
+                threadIdInput.value = threadId;
+                log('线程已创建，ID: ' + threadId);
+                
+                // 记录线程的主题信息
+                if (data.thread.topic) {
+                    log('会话主题: ' + data.thread.topic);
+                }
+                
+                // 尝试提取线程的额外信息
+                if (data.thread.extra) {
+                    extractThreadExtra(data.thread.extra);
+                }
+            } else if (data.uid) {
+                // 可能线程数据直接在顶层
+                threadId = data.uid;
+                threadIdInput.value = threadId;
+                log('线程已创建，ID: ' + threadId);
+                
+                if (data.topic) {
+                    log('会话主题: ' + data.topic);
+                }
+                
+                if (data.extra) {
+                    extractThreadExtra(data.extra);
+                }
+            } else if (data.threadId) {
+                // 另一种可能的格式
+                threadId = data.threadId;
+                threadIdInput.value = threadId;
+                log('线程已创建，ID: ' + threadId);
+            }
+        }
+        
+        // 提取线程的额外信息
+        function extractThreadExtra(extraData) {
+            try {
+                let extra = extraData;
+                if (typeof extraData === 'string') {
+                    extra = JSON.parse(extraData);
+                }
+                
+                if (extra.workgroupId) {
+                    log('会话已分配技能组: ' + extra.workgroupId);
+                }
+                if (extra.orgUid) {
+                    log('组织UID: ' + extra.orgUid);
+                }
+            } catch (e) {
+                log('解析线程额外信息失败: ' + e.message);
+            }
+        }
+
+        // 处理客服回复事件
+        function handleAgentReplyEvent(message) {
+            if (!message) {
+                log('收到的客服回复事件为空');
+                return;
+            }
+            
+            try {
+                // 检查不同可能的数据字段位置
+                let data = message.data;
+                let username = message.username; // 获取username字段
+                
+                // 记录收到的消息结构
+                log('收到客服回复消息: ' + (username ? '用户名=' + username : '未提供用户名'));
+                
+                if (!data) {
+                    log('客服回复消息没有data字段');
+                    return;
+                }
+                
+                let content = '';
+                let sender = '客服';
+                
+                // 如果username字段存在，使用它作为发送者
+                if (username) {
+                    sender = username;
+                }
+                
+                // 直接处理字符串类型的data
+                if (typeof data === 'string') {
+                    // 数据就是字符串内容，直接使用
+                    content = data;
+                    log('收到字符串类型的回复内容');
+                } 
+                // 处理对象类型的data
+                else if (typeof data === 'object') {
+                    // 对象格式，尝试提取content字段
+                    if (data.content) {
+                        content = data.content;
+                    } else {
+                        // 对象但没有content字段，转为字符串
+                        content = JSON.stringify(data);
+                    }
+                    
+                    // 尝试获取发送者信息
+                    if (data.visitorNickname) {
+                        sender = data.visitorNickname;
+                    } else if (data.user && data.user.nickname) {
+                        sender = data.user.nickname;
+                    }
+                }
+                
+                // 显示消息
+                if (content) {
+                    log(`显示客服回复 - 发送者: ${sender}, 内容: ${content}`);
+                    addAgentMessage(sender, content);
+                } else {
+                    log('客服回复消息没有内容');
+                }
+            } catch (e) {
+                log('处理客服回复事件出错: ' + e.message);
+                console.error(e);
+            }
+        }
+
+        // 更新连接状态UI
+        function updateConnectionStatus(status, message) {
+            connectionStatus.className = 'status ' + status;
+            connectionStatus.innerText = '状态: ' + message;
+            
+            const connected = status === 'connected';
+            connectBtn.disabled = connected;
+            disconnectBtn.disabled = !connected;
+            reconnectBtn.disabled = connected; // 只有断开时才可以重连
+        }
+
+        // 启用/禁用聊天控件
+        function enableChatControls(enabled) {
+            messageInput.disabled = !enabled;
+            sendBtn.disabled = !enabled;
+            sendHeartbeatBtn.disabled = !enabled;
+        }
+
+        // 添加用户消息到聊天框
+        function addUserMessage(nickname, content) {
+            const timestamp = new Date().toLocaleTimeString();
+            
+            const messageDiv = document.createElement('div');
+            messageDiv.className = 'message-bubble user-message';
+            
+            const nicknameDiv = document.createElement('div');
+            nicknameDiv.className = 'nickname';
+            nicknameDiv.textContent = nickname;
+            
+            const contentDiv = document.createElement('div');
+            contentDiv.textContent = content;
+            
+            const timeDiv = document.createElement('div');
+            timeDiv.className = 'timestamp';
+            timeDiv.textContent = timestamp;
+            
+            messageDiv.appendChild(nicknameDiv);
+            messageDiv.appendChild(contentDiv);
+            messageDiv.appendChild(timeDiv);
+            
+            chatBox.appendChild(messageDiv);
+            chatBox.scrollTop = chatBox.scrollHeight;
+        }
+
+        // 添加客服消息到聊天框
+        function addAgentMessage(nickname, content) {
+            const timestamp = new Date().toLocaleTimeString();
+            
+            const messageDiv = document.createElement('div');
+            messageDiv.className = 'message-bubble agent-message';
+            
+            const nicknameDiv = document.createElement('div');
+            nicknameDiv.className = 'nickname';
+            nicknameDiv.textContent = nickname;
+            
+            const contentDiv = document.createElement('div');
+            contentDiv.textContent = content;
+            
+            const timeDiv = document.createElement('div');
+            timeDiv.className = 'timestamp';
+            timeDiv.textContent = timestamp;
+            
+            messageDiv.appendChild(nicknameDiv);
+            messageDiv.appendChild(contentDiv);
+            messageDiv.appendChild(timeDiv);
+            
+            chatBox.appendChild(messageDiv);
+            chatBox.scrollTop = chatBox.scrollHeight;
+        }
+
+        // 添加系统消息到聊天框
+        function addSystemMessage(content) {
+            const messageDiv = document.createElement('div');
+            messageDiv.className = 'system message';
+            messageDiv.textContent = content;
+            
+            chatBox.appendChild(messageDiv);
+            chatBox.scrollTop = chatBox.scrollHeight;
+        }
+
+        // 记录日志
+        function log(message) {
+            const timestamp = new Date().toLocaleTimeString();
+            
+            // 如果是对象，格式化显示
+            if (typeof message === 'object') {
+                message = JSON.stringify(message, null, 2);
+            }
+            
+            // 添加换行处理多行消息
+            if (message.includes('\n')) {
+                logContent.textContent += `[${timestamp}] ${message.split('\n')[0]}\n`;
+                message.split('\n').slice(1).forEach(line => {
+                    logContent.textContent += `  ${line}\n`;
+                });
+            } else {
+                logContent.textContent += `[${timestamp}] ${message}\n`;
+            }
+            
+            logContent.scrollTop = logContent.scrollHeight;
+        }
+
+        // 初始化
+        function init() {
+            log('ByteDesk WebSocket测试页面已加载，版本: 4.1');
+            log('修复了处理纯文本消息的问题，支持直接显示字符串类型的欢迎消息和客服回复');
+            
+            // 检查WebSocket支持
+            if (window.WebSocket) {
+                log('浏览器支持WebSocket');
+            } else {
+                log('警告: 浏览器不支持WebSocket，测试功能将无法正常工作');
+                alert('您的浏览器不支持WebSocket，请使用现代浏览器如Chrome、Firefox、Edge等');
+            }
+            
+            // 记录当前配置
+            log(`当前WebSocket URL: ${wsUrlInput.value}`);
+            log(`当前默认技能组: ${workgroupSelect.value}`);
+            log(`心跳间隔: ${HEARTBEAT_INTERVAL/1000}秒`);
+            log(`自动重连延迟: ${RECONNECT_DELAY/1000}秒`);
+            
+            // 设置默认昵称同步
+            userNickInput.value = usernameInput.value;
+            usernameInput.addEventListener('input', function() {
+                if (!userNickInput.value || userNickInput.value === userNickInput.defaultValue) {
+                    userNickInput.value = usernameInput.value;
+                }
+            });
+            
+            // 设置回车发送
+            messageInput.addEventListener('keypress', function(e) {
+                if (e.key === 'Enter') {
+                    sendMessage();
+                    e.preventDefault();
+                }
+            });
+            
+            // 页面关闭时清理资源
+            window.addEventListener('beforeunload', function() {
+                clearHeartbeatAndReconnect();
+                if (socket && socket.readyState === WebSocket.OPEN) {
+                    socket.close();
+                }
+            });
+            
+            log('初始化完成，可以开始测试');
+        }
+
+        // 页面加载完成后初始化
+        window.addEventListener('load', init);
+    </script>
+</body>
+</html> 

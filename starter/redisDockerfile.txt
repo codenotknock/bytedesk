@@ -1,0 +1,26 @@
+# 首先本地启动docker, 如果没有安装，会自动安装redis/redis-stack-server
+# 线上环境：安装redis/redis-stack-server
+# 密码参数：-e REDIS_ARGS="--requirepass 密码"
+docker run -d --name redis-stack-server -p 6379:6379 -e REDIS_ARGS="--requirepass 密码" redis/redis-stack-server:latest
+# 使用redis-cli
+docker exec -it redis-stack-server redis-cli
+# 本地测试：安装redis/redis-stack
+# redisinsight: http://localhost:8001
+# docker run -d --name redis-stack -p 6379:6379 -p 8001:8001 -e REDIS_ARGS="--requirepass 密码" redis/redis-stack:latest
+#
+# 将内容存储到/local-data/文件夹
+# docker run -v /local-data/:/data redis/redis-stack:latest
+# 使用local-redis-stack.conf替代默认redis-stack.conf配置文件
+# docker run -v `pwd`/local-redis-stack.conf:/redis-stack.conf -p 6379:6379 -p 8001:8001 redis/redis-stack-server:latest
+# 使用redis-cli
+# docker exec -it redis-stack redis-cli
+#
+# 1.进入redis的容器：docker exec -it redis-stack bash
+# 2.运行命令：redis-cli
+# 3.查看现有的redis密码：config get requirepass
+# 随机密码 https://suijimimashengcheng.bmcx.com/
+# 4.设置 redis 密码：config set requirepass 密码
+# docker container stop redis-stack # 停止 Redis 服务
+# docker container start redis-stack # 开启 Redis 服务
+# docker container restart redis-stack # 重启 Redis 服务
+#
