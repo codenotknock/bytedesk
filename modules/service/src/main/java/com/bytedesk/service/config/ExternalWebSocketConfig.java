@@ -31,17 +31,18 @@ public class ExternalWebSocketConfig implements WebSocketConfigurer {
     @Autowired
     private ExternalMessageBridge messageBridge;
 
+    @Autowired
+    private ExternalWebSocketHandler externalWebSocketHandler;
+
     @Override
     public void registerWebSocketHandlers(WebSocketHandlerRegistry registry) {
         log.info("注册外部WebSocket处理器");
 
-        // 创建外部WebSocket处理器实例
-        ExternalWebSocketHandler handler = new ExternalWebSocketHandler();
         // 设置消息桥接器
-        handler.setMessageBridge(messageBridge);
+        externalWebSocketHandler.setMessageBridge(messageBridge);
 
         // 注册处理器，同时支持原始WebSocket和SockJS
-        registry.addHandler(handler, "/ws/external")
+        registry.addHandler(externalWebSocketHandler, "/ws/external")
             .setAllowedOrigins("*")
             .addInterceptors(webSocketHandshakeInterceptor());
     }
@@ -51,6 +52,7 @@ public class ExternalWebSocketConfig implements WebSocketConfigurer {
         return new WebSocketHandshakeInterceptor();
     }
 
+    /*
     @Bean(name = "externalWebSocketTaskScheduler")
     public TaskScheduler externalWebSocketTaskScheduler() {
         ThreadPoolTaskScheduler scheduler = new ThreadPoolTaskScheduler();
@@ -59,6 +61,7 @@ public class ExternalWebSocketConfig implements WebSocketConfigurer {
         scheduler.initialize();
         return scheduler;
     }
+     */
 
     /**
      * WebSocket握手拦截器，用于身份验证和参数传递

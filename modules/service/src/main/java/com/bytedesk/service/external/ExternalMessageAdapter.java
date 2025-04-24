@@ -7,16 +7,14 @@ import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
 import com.bytedesk.core.thread.ThreadProtobuf;
-import com.bytedesk.core.topic.TopicRequest;
-import com.bytedesk.core.topic.TopicUtils;
 import com.bytedesk.core.topic.TopicService;
+import com.bytedesk.service.visitor.VisitorResponse;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.web.socket.TextMessage;
 import org.springframework.web.socket.WebSocketSession;
 
-import com.alibaba.fastjson2.JSON;
 import com.alibaba.fastjson2.JSONObject;
 import com.bytedesk.core.message.IMessageSendService;
 import com.bytedesk.core.message.MessageProtobuf;
@@ -34,7 +32,7 @@ import lombok.extern.slf4j.Slf4j;
 public class ExternalMessageAdapter {
 
     // 默认技能组ID，如果未指定则使用此技能组接待
-    private static final String DEFAULT_WORKGROUP_UID = "201";
+//    private static final String DEFAULT_WORKGROUP_UID = "201";
     
     // 默认组织UID
     private static final String DEFAULT_ORG_UID = "df_org_uid";
@@ -43,8 +41,8 @@ public class ExternalMessageAdapter {
     private static final String DEFAULT_VISITOR_AVATAR = "https://cdn.weiyuai.cn/avatars/visitor_default_avatar.png";
     
     // 存储用户名和线程ID的映射: username -> threadId
-    private final Map<String, String> usernameThreadMap = new ConcurrentHashMap<>();
-    
+    private final Map<String, ThreadProtobuf> usernameThreadMap = new ConcurrentHashMap<>();
+
     @Autowired
     private IMessageSendService messageSendService;
     
@@ -70,8 +68,7 @@ public class ExternalMessageAdapter {
             String userNick = data.getString("userNick");
             String question = data.getString("question");
             String customerId = data.getString("customer");
-            String threadId = data.getString("threadId");
-//            String threadId = "1629641261449472";
+            String threadId = data.getString("threadId"); // 从data中获取会话ID，可能为null
             String messageId = data.getString("messageId"); // 可选，用于客户端消息确认
             String workgroupId = data.getString("workgroupId"); // 可选，指定技能组ID
             String orgUid = data.getString("orgUid") != null ? data.getString("orgUid") : "1628329459318912";
@@ -82,37 +79,24 @@ public class ExternalMessageAdapter {
                 return;
             }
             
-            // 如果没有指定技能组ID，使用默认技能组
-            if (workgroupId == null || workgroupId.isEmpty()) {
-                workgroupId = DEFAULT_WORKGROUP_UID;
-            }
-            
             // 生成唯一用户ID (如果没有提供)
             String userUid = customerId != null ? customerId : "visitor_" + System.currentTimeMillis();
             
             // 1. 首先尝试创建或更新访客记录
-            initializeVisitor(userUid, userNick, userAvatar, session);
-            MessageProtobuf threadAndSendFirstMessage = null;
+            VisitorResponse visitorResponse = initializeVisitor(userUid, userNick, userAvatar);
+
             // 2. 根据是否有threadId决定创建新会话或在现有会话发送消息
-            if (threadId == null || threadId.isEmpty()) {
-                // 创建新的会话
-                threadId = String.valueOf(System.currentTimeMillis());
-                usernameThreadMap.put(username, threadId);
-                
+            ThreadProtobuf thread = usernameThreadMap.get(username);
+            if (thread == null) {
                 // 3. 创建新会话并发送首条消息
-                threadAndSendFirstMessage = createThreadAndSendFirstMessage(username, userNick, question, threadId, userUid,
+                MessageProtobuf messageProtobuf = createThreadAndSendFirstMessage(username, userNick, question, threadId, userUid,
                         workgroupId, messageId, customerId, orgUid,
                         userAvatar, session);
+                // 4. 在现有会话中发送消息
+                thread = messageProtobuf.getThread();
+                usernameThreadMap.put(username, thread);
             }
-            // 4. 在现有会话中发送消息
-            ThreadProtobuf thread = threadAndSendFirstMessage.getThread();
-            sendVisitorMessage(username, userNick, question, thread.getUid(), userUid,
-                    workgroupId, messageId, customerId, orgUid, userAvatar,
-                    session);
-
-            // 1. 通过事件发布，触发消息分发流程
-
-
+            sendVisitorMessage(visitorResponse, thread, question, session);
 
         } catch (Exception e) {
             log.error("处理用户问题异常", e);
@@ -126,8 +110,10 @@ public class ExternalMessageAdapter {
     
     /**
      * 初始化访客信息
+     *
+     * @return
      */
-    private void initializeVisitor(String visitorUid, String nickname, String avatar, WebSocketSession session) {
+    private VisitorResponse initializeVisitor(String visitorUid, String nickname, String avatar) {
         try {
             // 创建访客请求
             VisitorRequest visitorRequest = new VisitorRequest();
@@ -140,11 +126,12 @@ public class ExternalMessageAdapter {
             visitorRequest.setClient("WEB_VISITOR");
 
             // 调用访客服务初始化或更新访客
-            visitorRestService.create(visitorRequest);
+            return visitorRestService.create(visitorRequest);
         } catch (Exception e) {
             log.error("初始化访客信息失败", e);
             // 不中断流程，即使访客记录创建失败
         }
+        return null;
     }
     
     /**
@@ -172,7 +159,10 @@ public class ExternalMessageAdapter {
 //            visitorRequest.setBrowser(session.getHandshakeHeaders().getFirst("User-Agent"));
             // 将额外信息存储在extra字段中
             JSONObject extraJson = new JSONObject();
-            extraJson.put("threadId", threadId);
+            // 只有当threadId不为null时才添加
+            if (threadId != null) {
+                extraJson.put("threadId", threadId);
+            }
             if (customerId != null) {
                 extraJson.put("customerId", customerId);
             }
@@ -210,87 +200,57 @@ public class ExternalMessageAdapter {
     }
     
     /**
-     * 创建客服用户JSON
-     */
-    private JSONObject createAgentJson() {
-        JSONObject agentJson = new JSONObject();
-        agentJson.put("uid", "system_agent");
-        agentJson.put("nickname", "客服助手");
-        agentJson.put("avatar", "https://cdn.weiyuai.cn/avatars/agent_default_avatar.png");
-        agentJson.put("type", "AGENT");
-        agentJson.put("extra", "{}");
-        return agentJson;
-    }
-    
-    /**
      * 发送访客问题消息
      */
-    private void sendVisitorMessage(String username, String userNick, String question, String threadId, 
-                                   String userUid, String workgroupId, String messageId, 
-                                   String customerId, String orgUid, String userAvatar,
-                                   WebSocketSession session) {
+    private void sendVisitorMessage(VisitorResponse visitorResponse, ThreadProtobuf thread, String question, WebSocketSession session) {
         try {
-            // 创建访客请求对象
-            VisitorRequest visitorRequest = new VisitorRequest();
-            visitorRequest.setUid(userUid);
-            visitorRequest.setNickname(userNick);
-            visitorRequest.setAvatar(userAvatar);
-            visitorRequest.setContent(question);  // 使用BaseRequest中的content字段存储问题
-            visitorRequest.setType(workgroupId);  // 使用BaseRequest中的type字段存储技能组ID
-            visitorRequest.setOrgUid(orgUid);
-//            visitorRequest.setDevice("web");
+            // 获取必要的信息
+            String visitorUid = visitorResponse.getUid();
+            String nickname = visitorResponse.getNickname();
+            String avatar = visitorResponse.getAvatar();
+            String orgUid = visitorResponse.getOrgUid() != null ? visitorResponse.getOrgUid() : DEFAULT_ORG_UID;
             
-            // 将额外信息存储在extra字段中
-            JSONObject extraJson = new JSONObject();
-            extraJson.put("threadId", threadId);
-            if (customerId != null) {
-                extraJson.put("customerId", customerId);
-            }
-            extraJson.put("messageId", messageId);
-            extraJson.put("source", "external_websocket");
-            visitorRequest.setExtra(extraJson.toString());
-            
-            // TODO: 实现通过策略模式发送消息的方法
-            // 当前使用原有方式发送消息，但应该改为使用策略模式
-            
-            // 构建主题
-            String topic = String.format("org/workgroup/%s/%s", workgroupId, userUid);
+            // 生成消息ID
+            String messageUid = UUID.randomUUID().toString().replace("-", "");
             
             // 创建访客用户信息
             JSONObject userJson = new JSONObject();
-            userJson.put("uid", userUid);
-            userJson.put("nickname", userNick);
-            userJson.put("avatar", userAvatar);
+            userJson.put("uid", visitorUid);
+            userJson.put("nickname", nickname);
+            userJson.put("avatar", avatar);
             userJson.put("type", "VISITOR");
             userJson.put("extra", "{}");
             
             // 创建线程信息
             JSONObject threadJson = new JSONObject();
-            threadJson.put("uid", threadId);
-            threadJson.put("topic", topic);
-            threadJson.put("type", "WORKGROUP");
+            threadJson.put("uid", thread.getUid());
+            threadJson.put("topic", thread.getTopic());
+            threadJson.put("type", "AGENT"); // 使用示例中的类型
             threadJson.put("status", "CHATTING");
-            threadJson.put("user", userJson);
-            threadJson.put("extra", "{}");
+            threadJson.put("user", userJson); // 在线程中也包含用户信息
             
-            // 创建访客消息
+            // 创建额外信息JSON对象并转为字符串
+            JSONObject extraJson = new JSONObject();
+            extraJson.put("orgUid", orgUid);
+            String extraJsonString = extraJson.toString();
+            
+            // 创建访客消息 - 格式与示例一致
             JSONObject visitorMessageJson = new JSONObject();
-            visitorMessageJson.put("uid", messageId != null ? messageId : UUID.randomUUID().toString().replace("-", ""));
+            visitorMessageJson.put("uid", messageUid);
             visitorMessageJson.put("type", "TEXT");
             visitorMessageJson.put("content", question);
             visitorMessageJson.put("status", "SENDING");
-            visitorMessageJson.put("createdAt", LocalDateTime.now().toString());
-            visitorMessageJson.put("client", null);
+            // 格式化时间为"yyyy-MM-dd HH:mm:ss"，与示例一致
+            String formattedTime = LocalDateTime.now().format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"));
+            visitorMessageJson.put("createdAt", formattedTime);
+            visitorMessageJson.put("client", "WEB_VISITOR");
+            visitorMessageJson.put("extra", extraJsonString);
             visitorMessageJson.put("thread", threadJson);
             visitorMessageJson.put("user", userJson);
-            visitorMessageJson.put("extra", createExtraJson(orgUid, workgroupId, customerId, "external_websocket"));
             
             log.info("发送访客消息: {}", visitorMessageJson.toString());
             
-            // 1. 通过事件发布，触发消息分发流程
-            //eventPublisher.publishEvent(new ExternalMessageEvent(this, "visitor_message", visitorMessageJson.toString()));
-            
-            // 2. 通过消息发送服务发送消息
+            // 通过消息发送服务发送消息
             messageSendService.sendJsonMessage(visitorMessageJson.toString());
             
             // 回复消息发送成功
@@ -298,31 +258,14 @@ public class ExternalMessageAdapter {
                 JSONObject response = new JSONObject();
                 response.put("event", "message-sent");
                 response.put("status", "success");
-                response.put("threadId", threadId);
+                response.put("threadId", thread.getUid());
                 response.put("message", visitorMessageJson); // 返回完整消息对象
-                if (messageId != null) {
-                    response.put("messageId", messageId);
-                }
                 session.sendMessage(new TextMessage(response.toJSONString()));
             }
         } catch (Exception e) {
             log.error("发送访客问题消息异常", e);
             throw new RuntimeException("发送消息失败: " + e.getMessage(), e);
         }
-    }
-    
-    /**
-     * 创建额外信息JSON
-     */
-    private String createExtraJson(String orgUid, String workgroupId, String customerId, String source) {
-        JSONObject extraInfo = new JSONObject();
-        extraInfo.put("orgUid", orgUid);
-        extraInfo.put("workgroupId", workgroupId);
-        if (customerId != null) {
-            extraInfo.put("customerId", customerId);
-        }
-        extraInfo.put("source", source);
-        return extraInfo.toJSONString();
     }
     
     /**
@@ -340,18 +283,19 @@ public class ExternalMessageAdapter {
                 String providedUsername = data.getString("username");
                 if (providedUsername != null && !providedUsername.isEmpty()) {
                     // 转移旧用户名的会话ID到新用户名
-                    String existingThreadId = usernameThreadMap.get(username);
-                    if (existingThreadId != null) {
-                        usernameThreadMap.put(providedUsername, existingThreadId);
+                    ThreadProtobuf existingThread = usernameThreadMap.get(username);
+                    if (existingThread != null) {
+                        usernameThreadMap.put(providedUsername, existingThread);
                     }
                     
                     username = providedUsername;
                 }
             }
             
-            // 如果客户端没有提供会话ID，尝试使用已存储的会话ID
-            if (threadId == null) {
-                threadId = usernameThreadMap.get(username);
+            // 如果客户端没有提供会话ID，尝试使用已存储的会话
+            ThreadProtobuf thread = usernameThreadMap.get(username);
+            if (threadId == null && thread != null) {
+                threadId = thread.getUid();
             }
             
             JSONObject response = new JSONObject();
@@ -406,14 +350,15 @@ public class ExternalMessageAdapter {
     /**
      * 保存会话映射
      */
-    public void saveThreadMapping(String username, String threadId) {
-        usernameThreadMap.put(username, threadId);
+    public void saveThreadMapping(String username, ThreadProtobuf thread) {
+        usernameThreadMap.put(username, thread);
     }
     
     /**
      * 获取会话ID
      */
     public String getThreadIdByUsername(String username) {
-        return usernameThreadMap.get(username);
+        ThreadProtobuf thread = usernameThreadMap.get(username);
+        return thread != null ? thread.getUid() : null;
     }
 } 

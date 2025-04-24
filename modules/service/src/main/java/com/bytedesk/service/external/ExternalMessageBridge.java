@@ -13,6 +13,7 @@ import lombok.extern.slf4j.Slf4j;
 
 import java.io.IOException;
 import java.util.Map;
+import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
@@ -28,7 +29,11 @@ public class ExternalMessageBridge implements ExternalMessageHandler {
     
     // 存储WebSocket会话: username -> session
     private final Map<String, WebSocketSession> sessionMap = new ConcurrentHashMap<>();
-    
+
+    // 存储待处理的消息: key -> message
+    private final Map<String, JSONObject> pendingMessages = new ConcurrentHashMap<>();
+
+
     /**
      * 处理消息
      * 根据消息类型路由到对应的处理方法
@@ -53,7 +58,7 @@ public class ExternalMessageBridge implements ExternalMessageHandler {
             
             switch (type) {
                 case "user-question":
-                    handleUserQuestion(session, data, username);
+                    handleUserQuestion(session, data, data.getString("userNick"));
                     break;
                 case "reconnect":
                     handleReconnect(session, json, username);
@@ -84,7 +89,10 @@ public class ExternalMessageBridge implements ExternalMessageHandler {
         response.put("timestamp", System.currentTimeMillis());
         return response.toJSONString();
     }
-    
+
+
+
+
     /**
      * 注册会话
      */
@@ -104,6 +112,16 @@ public class ExternalMessageBridge implements ExternalMessageHandler {
      */
     @Override
     public void handleUserQuestion(WebSocketSession session, JSONObject data, String username) {
+        // 检查更新 sessionMap
+        if (!sessionMap.containsKey(username)) {
+            sessionMap.put(username, session);
+        } else {
+            // 检查是否一致
+            if (!Objects.equals(sessionMap.get(username),session)) {
+                log.warn("会话不一致，将替换会话: {}", username);
+                sessionMap.put(username, session);
+            }
+        }
         log.debug("桥接用户问题消息: username={}", username);
         messageAdapter.handleUserQuestion(session, data, username);
     }
@@ -138,7 +156,17 @@ public class ExternalMessageBridge implements ExternalMessageHandler {
      */
     @Override
     public void saveThreadMapping(String username, String threadId) {
-        messageAdapter.saveThreadMapping(username, threadId);
+        try {
+            // 将String类型的threadId转换为ThreadProtobuf对象传递给messageAdapter
+            com.bytedesk.core.thread.ThreadProtobuf thread = null;
+            if (threadId != null) {
+                thread = new com.bytedesk.core.thread.ThreadProtobuf();
+                thread.setUid(threadId);
+            }
+            messageAdapter.saveThreadMapping(username, thread);
+        } catch (Exception e) {
+            log.error("保存会话映射异常: {}", e.getMessage());
+        }
     }
     
     /**
@@ -148,72 +176,33 @@ public class ExternalMessageBridge implements ExternalMessageHandler {
     public String getThreadIdByUsername(String username) {
         return messageAdapter.getThreadIdByUsername(username);
     }
-    
+
     /**
-     * 监听消息事件，转发客服回复消息到WebSocket
+     * 向指定用户名的会话发送客服回复
      */
-    @EventListener
-    public void handleExternalMessageEvent(ExternalMessageEvent event) {
-        log.debug("接收到外部消息事件: type={}", event.getType());
-        
-        try {
-            // 1. 解析消息
-            String messageJson = event.getMessageJson();
-            JSONObject message = JSON.parseObject(messageJson);
-            
-            // 2. 获取相关信息
-            JSONObject thread = message.getJSONObject("thread");
-            if (thread == null) {
-                log.warn("消息中缺少thread信息");
-                return;
+    public void sendAgentReply(String username, Object message) {
+        WebSocketSession session = sessionMap.get(username);
+        if (session != null && session.isOpen()) {
+            try {
+                JSONObject response = new JSONObject();
+                response.put("event", "agent-reply");
+                response.put("username", username);
+                response.put("data", JSON.toJSON(message));
+
+                session.sendMessage(new TextMessage(response.toJSONString()));
+                log.info("发送客服回复 {} {}", username, message);
+            } catch (IOException e) {
+                log.error("发送客服回复异常: {}", e.getMessage());
             }
-            
-            JSONObject threadUser = thread.getJSONObject("user");
-            if (threadUser == null) {
-                log.warn("线程中缺少user信息");
-                return;
-            }
-            
-            String threadId = thread.getString("uid");
-            String visitorUid = threadUser.getString("uid");
-            String visitorNickname = threadUser.getString("nickname");
-            
-            // 3. 查找所有可能匹配的WebSocket会话
-            for (Map.Entry<String, WebSocketSession> entry : sessionMap.entrySet()) {
-                String username = entry.getKey();
-                
-                // 3.1 检查会话ID映射
-                String mappedThreadId = messageAdapter.getThreadIdByUsername(username);
-                if (threadId.equals(mappedThreadId)) {
-                    WebSocketSession session = entry.getValue();
-                    if (session != null && session.isOpen()) {
-                        // 3.2 创建消息响应
-                        JSONObject response = new JSONObject();
-                        
-                        // 根据消息类型设置不同的事件
-                        String messageType = message.getString("type");
-                        switch (messageType) {
-                            case "WELCOME":
-                                response.put("event", "thread-created");
-                                response.put("data", message);
-                                break;
-                            default:
-                                response.put("event", "agent-reply");
-                                response.put("data", message);
-                                break;
-                        }
-                        
-                        // 3.3 发送消息
-                        session.sendMessage(new TextMessage(response.toJSONString()));
-                        log.info("已转发消息到WebSocket客户端: username={}, threadId={}", username, threadId);
-                        return; // 找到匹配会话后退出
-                    }
-                }
-            }
-            
-            log.debug("未找到匹配的WebSocket会话来转发消息: threadId={}, visitorUid={}", threadId, visitorUid);
-        } catch (Exception e) {
-            log.error("转发消息到WebSocket客户端异常", e);
+        } else {
+            log.warn("客户端不在线，无法发送客服回复消息，username: {}", username);
+            // 存储消息到待处理队列
+            JSONObject response = new JSONObject();
+            response.put("event", "agent-reply");
+            response.put("data", JSON.toJSON(message));
+
+            pendingMessages.put(username + ":" + System.currentTimeMillis(), response);
         }
     }
+
 } 

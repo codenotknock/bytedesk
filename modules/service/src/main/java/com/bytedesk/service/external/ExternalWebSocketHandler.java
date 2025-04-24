@@ -1,5 +1,6 @@
 package com.bytedesk.service.external;
 
+import org.springframework.stereotype.Component;
 import org.springframework.web.socket.CloseStatus;
 import org.springframework.web.socket.TextMessage;
 import org.springframework.web.socket.WebSocketSession;
@@ -19,6 +20,7 @@ import java.util.concurrent.ConcurrentHashMap;
  * 负责处理WebSocket连接生命周期和消息转发
  */
 @Slf4j
+@Component
 public class ExternalWebSocketHandler extends TextWebSocketHandler {
 
     private ExternalMessageBridge messageBridge;
@@ -31,7 +33,7 @@ public class ExternalWebSocketHandler extends TextWebSocketHandler {
     private final Map<String, String> usernameThreadMap = new ConcurrentHashMap<>();
     // 存储待处理的消息: key -> message
     private final Map<String, JSONObject> pendingMessages = new ConcurrentHashMap<>();
-    
+
     public void setMessageBridge(ExternalMessageBridge messageBridge) {
         this.messageBridge = messageBridge;
     }
@@ -134,7 +136,7 @@ public class ExternalWebSocketHandler extends TextWebSocketHandler {
                     messageBridge.handleHeartbeat(session, json);
                     break;
                 case "user-question":
-                    messageBridge.handleUserQuestion(session, data, username);
+                    messageBridge.handleUserQuestion(session, data, data.getString("userNick"));
                     break;
                 case "reconnect":
                     messageBridge.handleReconnect(session, json, username);
@@ -143,8 +145,8 @@ public class ExternalWebSocketHandler extends TextWebSocketHandler {
                     if (data != null) {
                         String threadId = data.getString("threadId");
                         if (threadId != null && !threadId.isEmpty()) {
-                            usernameThreadMap.put(username, threadId);
-                            messageBridge.saveThreadMapping(username, threadId);
+                            usernameThreadMap.put(username, null);
+                            messageBridge.saveThreadMapping(username, null);
                         }
                     }
                     break;
@@ -269,32 +271,7 @@ public class ExternalWebSocketHandler extends TextWebSocketHandler {
             }
         }
     }
-    
-    /**
-     * 向指定用户名的会话发送客服回复
-     */
-    public void sendAgentReply(String username, Object message) {
-        WebSocketSession session = sessionMap.get(username);
-        if (session != null && session.isOpen()) {
-            try {
-                JSONObject response = new JSONObject();
-                response.put("event", "agent-reply");
-                response.put("data", JSON.toJSON(message));
-                
-                session.sendMessage(new TextMessage(response.toJSONString()));
-            } catch (IOException e) {
-                log.error("发送客服回复异常: {}", e.getMessage());
-            }
-        } else {
-            log.warn("客户端不在线，无法发送客服回复消息，username: {}", username);
-            // 存储消息到待处理队列
-            JSONObject response = new JSONObject();
-            response.put("event", "agent-reply");
-            response.put("data", JSON.toJSON(message));
-            
-            pendingMessages.put(username + ":" + System.currentTimeMillis(), response);
-        }
-    }
+
     
     /**
      * 获取会话
